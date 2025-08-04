@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot SDK Test Page</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 50px;
+            background-color: #f0f2f5;
+            min-height: 100vh; /* Ensure body is tall enough to see fixed widget */
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        /* Example of content to make the page scrollable */
+        .page-content {
+            height: 1200px; /* Make content tall to test scrolling and fixed widget */
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-bottom: 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-content">
+        <h1>Welcome to Our Website!</h1>
+        <p>This is a sample page to test the integration of the Chatbot SDK. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+
+        <p>Feel free to scroll down and observe the chatbot widget remaining fixed in its position. The chatbot should initialize automatically and be ready for interaction once the page loads.</p>
+
+        <p>Test various message types by interacting with the chatbot. Ensure that buttons, images, videos, carousels, maps, FAQs, tables, ratings, and dynamic forms all render correctly and are interactive.</p>
+
+        <p>Remember to replace 'YOUR_Maps_API_KEY' in `src/renderer.js` with your actual Google Maps API key if you want to test the map feature.</p>
+
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+        <p>More content to enable scrolling...</p>
+    </div>
+
+    <script
+        src="../dist/chatbot.bundle.js"
+        chatbot-config='{
+            "botUrl": "http://0.0.0.0:8000/chat"
+        }'
+    ></script>
+    </body>
+</html>
