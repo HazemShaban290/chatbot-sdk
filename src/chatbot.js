@@ -197,9 +197,9 @@ class ChatbotWidget {
     bubble.style.backgroundColor = bubbleStyle.color || 'var(--chatbot-theme-color)';
     
     if (bubbleStyle.icon) {
-      bubble.innerHTML = bubbleStyle.icon.startsWith('http') ?  
-         `<img src="${bubbleStyle.icon}" class="chatbot-header-icon" 
-            style="width: ${bubbleStyle.iconSize || '30px'}; height: ${bubbleStyle.iconSize || '30px'};">`: bubbleStyle.icon;
+      bubble.innerHTML = bubbleStyle.icon.startsWith('http') ? 
+        `<img src="${bubbleStyle.icon}" alt="Chat" style="width: 70%; height: 70%;">` : 
+        bubbleStyle.icon;
     } else {
       bubble.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
@@ -279,9 +279,7 @@ class ChatbotWidget {
       this.elements.sendButton.textContent = this.config.sendButtonText;
     }
     
-    if (this.config.style?.bubble?.icon && this.elements.bubble) {
-      this.elements.bubble.innerHTML = this.config.style.bubble.icon;
-    }
+
   }
 
   showWidget() {
