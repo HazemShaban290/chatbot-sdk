@@ -630,9 +630,3 @@
 .chatbot-refresh-btn:hover {
   opacity: 1;
 }
-/* Temporary debug style */
-#chatbot-widget-container {
-  border: 3px solid red !important;
-  position: fixed !important;
-  z-index: 9999 !important;
-}
