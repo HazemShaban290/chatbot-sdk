@@ -87,6 +87,15 @@ function createButtons(buttons, sendMessageCallback) {
     } else if (btn.url) {
       button.addEventListener('click', () => window.open(btn.url, '_blank'));
     }
+    else if (btn.question){
+      button.addEventListener('click', () => {
+        // Prevent multiple clicks on buttons by disabling them after click
+        container.querySelectorAll('button').forEach(b => b.disabled = true);
+        if (sendMessageCallback) {
+            sendMessageCallback(btn.title, btn.question);
+        }
+      });
+    }
     container.appendChild(button);
   });
   return container;
@@ -149,86 +158,60 @@ function createCarousel(carouselItems, sendMessageCallback) {
   });
   return container;
 }
-
 function createLocationsMap(locations) {
-    if (!locations || locations.length === 0) return null;
+  if (!locations || locations.length === 0) return null;
 
-    const mapContainer = document.createElement('div');
-    mapContainer.className = 'chatbot-map-container';
-    mapContainer.style.width = '100%';
-    mapContainer.style.height = '300px';
-    mapContainer.style.borderRadius = '8px';
-    mapContainer.style.marginTop = '10px';
-    mapContainer.style.overflow = 'hidden';
+  const locationContainer = document.createElement('div');
+  locationContainer.className = 'chatbot-location-cards';
 
-    // Placeholder for map - actual map rendering needs external library like Google Maps or Leaflet.
-    // For Google Maps, you'd typically need to load their API script and initialize.
-    // This example assumes Google Maps API is loaded via `loadScript` in `utils.js`
-    // and you have an API key.
+  locations.forEach(location => {
+    const mapUrl = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
+    const staticMap = `https://maps.googleapis.com/maps/api/staticmap?center=${location.lat},${location.lng}&zoom=14&size=400x200&markers=color:red%7C${location.lat},${location.lng}&key=AIzaSyCYVHw1tnbSZsihFfewNPwvuKc0iXx0ymw`;
 
-    // Example with Google Maps (requires API Key):
-    const API_KEY = 'YOUR_Maps_API_KEY'; // Replace with your actual API key
-    if (!API_KEY || API_KEY === 'YOUR_Maps_API_KEY') {
-        mapContainer.textContent = 'Map requires Google Maps API Key.';
-        mapContainer.style.backgroundColor = '#f8d7da';
-        mapContainer.style.color = '#721c24';
-        mapContainer.style.padding = '10px';
-        mapContainer.style.textAlign = 'center';
-        return mapContainer;
+    const card = document.createElement('div');
+    card.className = 'chatbot-location-card';
+
+    // Map image
+    const img = document.createElement('img');
+    img.src = staticMap;
+    img.alt = `${location.name} map`;
+    img.className = 'chatbot-location-map';
+    card.appendChild(img);
+
+    // Card body
+    const body = document.createElement('div');
+    body.className = 'chatbot-location-body';
+
+    // Title
+    const title = document.createElement('div');
+    title.className = 'chatbot-location-title';
+    title.textContent = location.name;
+    body.appendChild(title);
+
+    // Address
+    if (location.address) {
+      const address = document.createElement('div');
+      address.className = 'chatbot-location-address';
+      address.textContent = location.address;
+      body.appendChild(address);
     }
 
-    loadScript(`https://maps.googleapis.com/maps/api/js?key=${API_KEY}&callback=initChatbotMap`, 'google-maps-api')
-        .then(() => {
-            // Define global callback if not already
-            if (typeof window.initChatbotMap === 'undefined') {
-                window.initChatbotMap = () => {
-                    // This callback is called by Google Maps API once it's loaded
-                    // We need to re-trigger the map creation for any pending maps
-                    document.querySelectorAll('.chatbot-map-container[data-map-initialized="false"]').forEach(el => {
-                        const mapLocations = JSON.parse(el.dataset.locations);
-                        createGoogleMapInstance(el, mapLocations);
-                    });
-                };
-            }
-            // If API is already loaded, callback might not fire, so check
-            if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
-                 createGoogleMapInstance(mapContainer, locations);
-            }
-        })
-        .catch(error => console.error("Error loading Google Maps script:", error));
+    // Button
+    const button = document.createElement('a');
+    button.href = mapUrl;
+    button.target = '_blank';
+    button.className = 'chatbot-location-button';
+    button.textContent = 'View on Map';
+    body.appendChild(button);
 
-    // Store locations and initialization status for later use by global callback
-    mapContainer.setAttribute('data-map-initialized', 'false');
-    mapContainer.setAttribute('data-locations', JSON.stringify(locations));
+    card.appendChild(body);
+    locationContainer.appendChild(card);
+  });
 
-
-    function createGoogleMapInstance(mapElement, locs) {
-        if (mapElement.getAttribute('data-map-initialized') === 'true') {
-            return; // Already initialized
-        }
-        if (!locs || locs.length === 0) return;
-
-        const centerLat = locs.reduce((sum, l) => sum + l.lat, 0) / locs.length;
-        const centerLng = locs.reduce((sum, l) => sum + l.lng, 0) / locs.length;
-
-        const map = new google.maps.Map(mapElement, {
-            center: { lat: centerLat, lng: centerLng },
-            zoom: 10,
-        });
-
-        locs.forEach(loc => {
-            new google.maps.Marker({
-                position: { lat: loc.lat, lng: loc.lng },
-                map: map,
-                title: loc.name,
-                label: loc.label || loc.name[0],
-            });
-        });
-        mapElement.setAttribute('data-map-initialized', 'true');
-    }
-
-    return mapContainer;
+  return locationContainer;
 }
+
+
 
 function createFaqList(faqs) {
     if (!faqs || faqs.length === 0) return null;

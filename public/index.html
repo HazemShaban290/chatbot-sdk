@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
     <title>Chatbot SDK Test Page</title>
     <style>
         body {
@@ -55,7 +56,9 @@
     <script
         src="../dist/chatbot.bundle.js"
         chatbot-config='{
-            "botUrl": "http://0.0.0.0:8000/chat"
+            "botUrl": "http://0.0.0.0:8000/chat",
+            "configApiUrl": "http://0.0.0.0:8000/chatbot/config",
+            "autoRefresh": true
         }'
     ></script>
     </body>
