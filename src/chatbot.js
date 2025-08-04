@@ -197,24 +197,16 @@ class ChatbotWidget {
     bubble.style.backgroundColor = bubbleStyle.color || 'var(--chatbot-theme-color)';
     
     if (bubbleStyle.icon) {
-  // Check if the icon is a valid image URL or a data URL
-        const isImageUrl = /\.(jpeg|jpg|gif|png|svg|webp)$/.test(bubbleStyle.icon) || bubbleStyle.icon.startsWith('http') || bubbleStyle.icon.startsWith('data:image');
-        
-        if (isImageUrl) {
-            bubble.innerHTML = `<img src="${bubbleStyle.icon}" alt="Chat" style="width: 70%; height: 70%; object-fit: contain;">`;
-        } else {
-            // Assume it's raw SVG or some other HTML string
-            bubble.innerHTML = bubbleStyle.icon;
-        }
-        } else {
-        // Default SVG icon
-        bubble.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
-            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
-            </svg>
-        `;
+      bubble.innerHTML = bubbleStyle.icon.startsWith('http') ?  
+         `<img src="${bubbleStyle.icon}" class="chatbot-header-icon" 
+            style="width: ${bubbleStyle.iconSize || '30px'}; height: ${bubbleStyle.iconSize || '30px'};">`: bubbleStyle.icon;
+    } else {
+      bubble.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+        </svg>
+      `;
     }
-
     
     bubble.addEventListener('click', () => this.toggleChatWindow());
     container.appendChild(bubble);
