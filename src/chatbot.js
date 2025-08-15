@@ -40,7 +40,7 @@ class ChatbotWidget {
     };
 
     // Apply defaults if not set
-    this.config.botUrl = this.config.botUrl || 'http://0.0.0.0:8000/chat';
+    this.config.botUrl = this.config.botUrl || 'http://0.0.0.0:8000/api/v1/chatbot/chat';
     this.config.themeColor = this.config.themeColor || '#020c15ff';
     this.config.position = this.config.position || 'bottom-right';
     this.config.botName = this.config.botName || 'Chatbot';
