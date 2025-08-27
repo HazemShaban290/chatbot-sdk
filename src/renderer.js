@@ -1,3 +1,4 @@
+
 // src/renderer.js
 import { loadScript } from './utils';
 

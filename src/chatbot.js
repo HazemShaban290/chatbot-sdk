@@ -1,7 +1,10 @@
-// src/chatbot.js
+// src/chatbot.js - Enhanced with tabs, responsive design, and new features
 import './chatbot.css';
 import { parseMarkdown, generateUniqueId, setLocalStorageItem, getLocalStorageItem } from './utils';
 import { renderMessage, renderCustomPayload } from './renderer';
+
+let authToken = null;
+let is_first_log_in = true;
 
 class ChatbotWidget {
   constructor() {
@@ -12,6 +15,10 @@ class ChatbotWidget {
     this.elements = {};
     this.refreshInterval = null;
     this.debug = true;
+    this.currentTab = 'home';
+    this.termsAccepted = false;
+    this.announcements = [];
+    this.userNotifications = [];
   }
 
   log(...args) {
@@ -41,9 +48,13 @@ class ChatbotWidget {
 
     // Apply defaults if not set
     this.config.botUrl = this.config.botUrl || 'http://0.0.0.0:8000/api/v1/chatbot/chat';
+    this.config.startingUrl = 'http://0.0.0.0:8000/api/v1/chatbot/start';
+    this.config.announcementsUrl = 'http://0.0.0.0:8000/api/v1/mock/announcements';
     this.config.themeColor = this.config.themeColor || '#020c15ff';
+    //console.log('Theme color set to:', this.config.themeColor);
     this.config.position = this.config.position || 'bottom-right';
     this.config.botName = this.config.botName || 'Chatbot';
+    console.log('botName:', this.config.botName);
     this.config.inputPlaceholder = this.config.inputPlaceholder || 'Type your message...';
     this.config.sendButtonText = this.config.sendButtonText || 'Send';
   }
@@ -51,23 +62,28 @@ class ChatbotWidget {
   async init() {
     this.initConfig();
     await this.loadConfig();
-    this.initSession();  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    this.createWidgetUI();
-  } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('DOM fully loaded, creating UI');
+    this.initSession();
+    
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
       this.createWidgetUI();
-    });
-  }
-  
-  // Fallback timeout
-  setTimeout(() => {
-    if (!this.elements.container) {
-      console.warn('Fallback UI creation');
-      this.createWidgetUI();
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOM fully loaded, creating UI');
+        this.createWidgetUI();
+      });
     }
-  }, 1000);
+    
+    // Fallback timeout
+    setTimeout(() => {
+      if (!this.elements.container) {
+        console.warn('Fallback UI creation');
+        this.createWidgetUI();
+      }
+    }, 1000);
 
+    // Load announcements
+    console.log('Loading announcements...');
+    await this.loadAnnouncements();
   }
 
   async loadConfig() {
@@ -77,9 +93,85 @@ class ChatbotWidget {
         const response = await fetch(`${this.config.configApiUrl}?t=${Date.now()}`);
         const apiConfig = await response.json();
         this.mergeConfigs(apiConfig);
+        this.applyDynamicStyles();
       } catch (error) {
         this.log('Initial config load failed:', error);
       }
+    }
+  }
+
+  // --- Announcements Management ---
+  async loadAnnouncements() {
+    try {
+      const response = await fetch(this.config.announcementsUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const announcements = await response.json();
+        this.announcements = announcements.sort((a, b) => new Date(b.date) - new Date(a.date));
+        this.renderAnnouncements();
+      }
+    } catch (error) {
+      console.error('Failed to load announcements:', error);
+    }
+  }
+
+  renderAnnouncements() {
+  const announcementsContent = this.elements.announcementsContent;
+  if (!announcementsContent) return;
+
+  const container = announcementsContent.querySelector('.chatbot-announcements-list');
+  if (!container) return;
+
+  container.innerHTML = '';
+  // Add a class for the specific scroll effect
+  container.classList.add('scroll-stack-list');
+
+  if (this.announcements.length === 0) {
+    container.innerHTML = `
+      <div class="chatbot-announcements-empty">
+        <div class="chatbot-announcements-empty-icon">📢</div>
+        <p>No announcements available at the moment.</p>
+      </div>
+    `;
+    return;
+  }
+
+  this.announcements.forEach((announcement, index) => {
+    const card = document.createElement('div');
+    card.className = 'chatbot-announcement-card';
+    card.style.animationDelay = `${index * 0.1}s`;
+
+    const imageSection = announcement.image 
+      ? `<div class="chatbot-announcement-image" style="background-image: url('${announcement.image}')"></div>`
+      : `<div class="chatbot-announcement-image chatbot-announcement-default-icon">📢</div>`;
+
+    card.innerHTML = `
+    
+      ${imageSection}
+      <div class="chatbot-announcement-content">
+        <div class="chatbot-announcement-title">${announcement.text || 'Announcement'}</div>
+        <div class="chatbot-announcement-description">${announcement.description || ''}</div>
+        <div class="chatbot-announcement-date">${this.formatDate(announcement.date)}</div>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+}
+  formatDate(dateString) {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch (error) {
+      return dateString;
     }
   }
 
@@ -126,11 +218,13 @@ class ChatbotWidget {
     const { style } = this.config;
 
     if (style.themeColor) {
+    console.log('Applying theme color:', style.themeColor);
       root.style.setProperty('--chatbot-theme-color', style.themeColor);
       root.style.setProperty('--chatbot-theme-color-hover', this.adjustColor(style.themeColor, -20));
     }
 
     if (style.header?.backgroundColor) {
+        console.log('Applying theme color:', style.backgroundColor);
       root.style.setProperty('--chatbot-header-bg', style.header.backgroundColor);
     }
 
@@ -158,29 +252,30 @@ class ChatbotWidget {
 
   // --- UI Management ---
   createWidgetUI() {
-    console.log('Creating widget UI...'); // Debug 1
-    console.log('Config:', this.config); // Debug 2
+    console.log('Creating widget UI...');
+    console.log('Config:', this.config);
   
     const container = document.createElement('div');
     container.id = 'chatbot-widget-container';
-    console.log('Container created:', container); // Debug 3
+    console.log('Container created:', container);
 
     container.classList.add(`chatbot-position-${this.config.position}`);
     container.style.display = 'none';
     container.style.opacity = '0';
-    
 
     document.body.appendChild(container);
     this.elements.container = container;
+    
     setTimeout(() => {
-        const computedStyle = window.getComputedStyle(this.elements.container);
-        console.log('Computed styles:', {
-            display: computedStyle.display,
-            opacity: computedStyle.opacity,
-            zIndex: computedStyle.zIndex,
-            visibility: computedStyle.visibility
-        });
-        }, 500);
+      const computedStyle = window.getComputedStyle(this.elements.container);
+      console.log('Computed styles:', {
+        display: computedStyle.display,
+        opacity: computedStyle.opacity,
+        zIndex: computedStyle.zIndex,
+        visibility: computedStyle.visibility
+      });
+    }, 500);
+
     // Apply animation settings
     const animation = this.config.style?.animation || { type: 'fade-in', duration: 300 };
     if (animation.type) {
@@ -212,28 +307,126 @@ class ChatbotWidget {
     container.appendChild(bubble);
     this.elements.bubble = bubble;
 
-    // Create Chat Window
+    // Create Chat Window with tabs
     const windowEl = document.createElement('div');
     windowEl.className = 'chatbot-window';
-    this.refreshConfig()
+    
     const headerStyle = this.config.style?.header || {};
     windowEl.innerHTML = `
       <div class="chatbot-header" style="
         ${headerStyle.backgroundColor ? `background-color: ${headerStyle.backgroundColor};` : ''}
         ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
       ">
-        ${headerStyle.icon ? 
-          `<img src="${headerStyle.icon}" class="chatbot-header-icon" 
-            style="width: ${headerStyle.iconSize || '30px'}; height: ${headerStyle.iconSize || '30px'};">` : ''}
-        <span class="chatbot-header-title">${this.config.botName}</span>
-        <button class="chatbot-header-close" style="
-          ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
-        ">&times;</button>
+        <div class="chatbot-header-top">
+          ${headerStyle.icon ? 
+            `<img src="${headerStyle.icon}" class="chatbot-header-icon" 
+              style="width: ${headerStyle.iconSize || '30px'}; height: ${headerStyle.iconSize || '30px'};">` : ''}
+          <span class="chatbot-header-title">${this.config.botName}</span>
+          <button class="chatbot-header-close" style="
+            ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
+          ">&times;</button>
+        </div>
+
       </div>
-      <div class="chatbot-messages"></div>
-      <div class="chatbot-input-area">
-        <input type="text" placeholder="${this.config.inputPlaceholder}" />
-        <button class="chatbot-send-button">${this.config.sendButtonText}</button>
+      
+      <div class="chatbot-content">
+        <!-- Home Tab -->
+        <div class="chatbot-tab-content active" data-content="home">
+          <div class="chatbot-home-content">
+            <div class="chatbot-home-welcome">
+              <h2>Welcome!</h2>
+              <p>How can we help you today?</p>
+            </div>
+            
+            <div class="chatbot-actions-grid">
+              <div class="chatbot-action-card" data-action="start-chat">
+                <span class="chatbot-action-icon">💬</span>
+                <div class="chatbot-action-title">Start Chat</div>
+                <div class="chatbot-action-desc">Begin a conversation with our assistant</div>
+              </div>
+              <div class="chatbot-action-card" data-action="check-products">
+                <span class="chatbot-action-icon">🏪</span>
+                <div class="chatbot-action-title">Our Products</div>
+                <div class="chatbot-action-desc">Explore our product offerings</div>
+              </div>
+              <div class="chatbot-action-card" data-action="contact-us">
+                <span class="chatbot-action-icon">📞</span>
+                <div class="chatbot-action-title">Contact Us</div>
+                <div class="chatbot-action-desc">Get in touch with support</div>
+              </div>
+              <div class="chatbot-action-card" data-action="faq">
+                <span class="chatbot-action-icon">❓</span>
+                <div class="chatbot-action-title">FAQ</div>
+                <div class="chatbot-action-desc">Find answers to common questions</div>
+              </div>
+            </div>
+            
+            <div class="chatbot-user-actions" style="display: none;">
+              <h3>Your Account</h3>
+              <div class="chatbot-user-notifications"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Chat Tab -->
+        <div class="chatbot-tab-content" data-content="chat">
+          <div class="chatbot-chat-content">
+            <div class="chatbot-messages"></div>
+            <div class="chatbot-input-area">
+              <input type="text" placeholder="${this.config.inputPlaceholder}" />
+              <button class="chatbot-send-button">${this.config.sendButtonText}</button>
+            </div>
+          </div>
+          
+          <!-- Terms Overlay -->
+          <div class="chatbot-terms-overlay">
+            <div class="chatbot-terms-content">
+              <div class="chatbot-terms-title">Terms & Conditions</div>
+              <div class="chatbot-terms-text">
+                Before we start, and for your protection, please don't type any account or card numbers on the screen or any of your PINs. Please also note that we will be keeping a record of this conversation for service quality purposes. I am here to help you with general inquiries about the Bank, its products and services. If you need to access your bank accounts or cards,
+              </div>
+              <div class="chatbot-terms-text">
+                Dear customer, in order to ensure the confidentiality of your data, please do not share the three numbers on the back of the credit or debit card, the OTP or the password for the smart wallet service or the Internet banking with anyone, whether by phone, text message or e-mail and in case that this data is requested by any means of communication, please contact 19666 as soon as possible.
+              </div>
+              <div class="chatbot-terms-buttons">
+                <button class="chatbot-terms-accept">I Agree</button>
+                <button class="chatbot-terms-decline">Decline</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Announcements Tab -->
+        <div class="chatbot-tab-content" data-content="announcements">
+          <div class="chatbot-announcements-content">
+            <div class="chatbot-announcements-list"></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="chatbot-footer" style="
+        text-align: center;
+        padding: 10px;
+        font-size: 12px;
+        font-family: 'Segoe UI', sans-serif;
+        background: #fdfdfd;
+      ">
+        <div class="chatbot-tabs">
+          <button class="chatbot-tab active" data-tab="home">Home</button>
+          <button class="chatbot-tab" data-tab="chat">Chat</button>
+          <button class="chatbot-tab" data-tab="announcements">News</button>
+        </div>
+        <span style="
+            background: linear-gradient(90deg, #4a90e2, #9013fe, #ff4081);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+            font-style: italic;
+            font-size: 1.1em;
+            animation: shimmer 3s infinite;
+            background-size: 200% auto;
+            display:inline-block;
+        ">Powered by Finova ✨</span>
       </div>
     `;
 
@@ -244,16 +437,15 @@ class ChatbotWidget {
     this.elements.sendButton = windowEl.querySelector('.chatbot-input-area button');
     this.elements.closeButton = windowEl.querySelector('.chatbot-header-close');
     this.elements.headerTitle = windowEl.querySelector('.chatbot-header-title');
-
-    // Add refresh button
-
+    this.elements.homeContent = windowEl.querySelector('[data-content="home"]');
+    this.elements.chatContent = windowEl.querySelector('[data-content="chat"]');
+    this.elements.announcementsContent = windowEl.querySelector('[data-content="announcements"]');
+    this.elements.termsOverlay = windowEl.querySelector('.chatbot-terms-overlay');
+    this.elements.userActions = windowEl.querySelector('.chatbot-user-actions');
+    this.elements.userNotifications = windowEl.querySelector('.chatbot-user-notifications');
 
     // Event Listeners
-    this.elements.closeButton.addEventListener('click', () => this.toggleChatWindow());
-    this.elements.sendButton.addEventListener('click', () => this.sendMessage());
-    this.elements.inputField.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') this.sendMessage();
-    });
+    this.setupEventListeners();
 
     // Render messages and show
     this.messages.forEach(msg => this.displayMessage(msg, false));
@@ -265,6 +457,192 @@ class ChatbotWidget {
       this.startAutoRefresh(this.config.autoRefreshInterval || 300000);
     }
   }
+
+  setupEventListeners() {
+    // Close button
+    this.elements.closeButton.addEventListener('click', () => this.toggleChatWindow());
+    
+    // Send message
+    this.elements.sendButton.addEventListener('click', () => this.sendMessage());
+    this.elements.inputField.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') this.sendMessage();
+    });
+
+    // Tab navigation
+    const tabs = this.elements.window.querySelectorAll('.chatbot-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        this.switchTab(tabName);
+      });
+    });
+
+    // Home actions
+    const actionCards = this.elements.window.querySelectorAll('.chatbot-action-card');
+    actionCards.forEach(card => {
+      card.addEventListener('click', () => {
+        const action = card.dataset.action;
+        this.handleHomeAction(action);
+      });
+    });
+
+    // Terms acceptance
+    const termsAccept = this.elements.window.querySelector('.chatbot-terms-accept');
+    const termsDecline = this.elements.window.querySelector('.chatbot-terms-decline');
+    
+    termsAccept.addEventListener('click', () => {
+      this.termsAccepted = true;
+      this.elements.termsOverlay.style.display = 'none';
+    });
+    
+    termsDecline.addEventListener('click', () => {
+      this.switchTab('home');
+    });
+  }
+
+  switchTab(tabName) {
+    // Update active tab button
+    const tabs = this.elements.window.querySelectorAll('.chatbot-tab');
+    tabs.forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+
+    // Update active content
+    const contents = this.elements.window.querySelectorAll('.chatbot-tab-content');
+    contents.forEach(content => {
+      content.classList.toggle('active', content.dataset.content === tabName);
+    });
+
+    this.currentTab = tabName;
+
+    // Handle tab-specific actions
+    if (tabName === 'chat') {
+      if (!this.termsAccepted) {
+        this.elements.termsOverlay.style.display = 'flex';
+      }
+      // Always scroll to bottom when opening chat tab
+      setTimeout(() => {
+        this.scrollToBottom();
+      }, 100);
+    }
+
+
+    if (tabName === 'announcements' && this.announcements.length === 0) {
+      this.loadAnnouncements();
+    }
+  }
+
+  handleHomeAction(action) {
+    switch (action) {
+      case 'start-chat':
+        this.switchTab('chat');
+        break;
+      case 'check-products':
+        this.switchTab('chat');
+        if (this.termsAccepted) {
+          setTimeout(() => {
+            this.sendMessage('Show me your products', '/list_product_list');
+          }, 500);
+        }
+        break;
+      case 'contact-us':
+        this.switchTab('chat');
+        if (this.termsAccepted) {
+          setTimeout(() => {
+            this.sendMessage('I need to contact support', '/contact_support');
+          }, 500);
+        }
+        break;
+      case 'faq':
+        this.switchTab('chat');
+        if (this.termsAccepted) {
+          setTimeout(() => {
+            this.sendMessage('Show me frequently asked questions', '/show_faq');
+          }, 500);
+        }
+        break;
+    }
+  }
+
+  async loadUserNotifications() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(this.config.startingUrl, {
+        method: 'GET',
+        headers: { 
+          'Content-Type': 'application/json',
+          'authorization': `Bearer ${authToken}`
+        },
+      });
+
+      if (response.ok) {
+        const notifications = await response.json();
+        this.userNotifications = notifications;
+        
+        this.renderUserNotifications();
+      }
+    } catch (error) {
+      console.error('Failed to load user notifications:', error);
+    }
+  }
+
+renderUserNotifications() {
+  if (!this.elements.userActions || !this.elements.userNotifications) return;
+
+  // Clear existing notifications
+  this.elements.userNotifications.innerHTML = '';
+  
+  // Flatten the notifications into a single array of actionable items
+  const actionableItems = [];
+  this.userNotifications.forEach(notification => {
+    // Add the main notification text as a standalone card if it exists
+    if (notification.text) {
+      actionableItems.push({
+        text: notification.text,
+        url: null // No action for the main text
+      });
+    }
+    // Add each button as a separate actionable item
+    if (notification.buttons) {
+      notification.buttons.forEach(btn => {
+        actionableItems.push({
+          text: btn.title,
+          url: btn.url,
+        });
+      });
+    }
+  });
+
+  if (actionableItems.length === 0) {
+    this.elements.userActions.style.display = 'none';
+    return;
+  }
+
+  this.elements.userActions.style.display = 'block';
+
+  actionableItems.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'chatbot-notification-card';
+    
+    // Add the notification text
+    const textDiv = document.createElement('div');
+    textDiv.className = 'chatbot-notification-text';
+    textDiv.textContent = item.text;
+    card.appendChild(textDiv);
+    
+    // Add a button if a URL is available
+    if (item.url) {
+      const actionButton = document.createElement('button');
+      actionButton.className = 'chatbot-notification-button';
+      actionButton.textContent = 'View Details'; // A generic, actionable text
+      actionButton.onclick = () => window.open(item.url, '_blank');
+      card.appendChild(actionButton);
+    }
+    
+    this.elements.userNotifications.appendChild(card);
+  });
+}
 
   updateUIElements() {
     if (this.elements.headerTitle) {
@@ -278,21 +656,19 @@ class ChatbotWidget {
     if (this.elements.sendButton) {
       this.elements.sendButton.textContent = this.config.sendButtonText;
     }
-    
-
   }
 
   showWidget() {
-      console.log('Attempting to show widget...'); // Debug 4
-  
-  // Force visibility for debugging
+    console.log('Attempting to show widget...');
+
+    // Force visibility for debugging
     this.elements.container.style.display = 'block';
     this.elements.container.style.opacity = '1';
     this.elements.container.style.zIndex = '99999';
     
     // Original animation code
     const animation = this.config.style?.animation || { type: 'fade-in', duration: 300 };
-    console.log('Using animation:', animation); // Debug 5
+    console.log('Using animation:', animation);
 
     this.elements.container.style.display = 'block';
     
@@ -382,6 +758,34 @@ class ChatbotWidget {
     this.scrollToBottom();
   }
 
+  async sendSuggestions() {
+    try {
+      const response = await fetch(this.config.startingUrl, {
+        method: 'GET',
+        headers: { 
+          'Content-Type': 'application/json',
+          'authorization': `Bearer ${authToken}`
+        },
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+      const botResponses = await response.json();
+      if (botResponses?.length > 0) {
+        console.log(authToken+" --- IGNORE ---");
+        botResponses.forEach(response => this.displayMessage({ sender: 'bot', ...response }));
+      } else {
+        this.displayMessage({ sender: 'bot', text: "Sorry, I didn't get a response." });
+      }
+    } catch (error) {
+      console.error('Chatbot error:', error);
+      this.displayMessage({ 
+        sender: 'bot', 
+        text: "I'm having trouble connecting. Please try again later." 
+      });
+    }
+  }
+
   async sendMessage(text = null, payload = null) {
     let messageText = text || this.elements.inputField.value.trim();
     if (!messageText && !payload) return;
@@ -407,6 +811,7 @@ class ChatbotWidget {
 
       const botResponses = await response.json();
       if (botResponses?.length > 0) {
+        console.log(authToken+" --- IGNORE ---");
         botResponses.forEach(response => this.displayMessage({ sender: 'bot', ...response }));
       } else {
         this.displayMessage({ sender: 'bot', text: "Sorry, I didn't get a response." });
@@ -427,6 +832,11 @@ class ChatbotWidget {
     this.elements.bubble.classList.toggle('hidden', this.isOpen);
     
     if (this.isOpen) {
+      if (is_first_log_in && authToken) {
+        is_first_log_in = false;
+        this.sendSuggestions();
+      }
+
       this.elements.inputField.focus();
       this.scrollToBottom();
     }
@@ -440,5 +850,28 @@ class ChatbotWidget {
 }
 
 // Initialize
+
 window.ChatbotSDK = new ChatbotWidget();
 window.ChatbotSDK.init();
+window.ChatbotSDK.init();
+window.ChatbotSDK.init();
+
+(function() {
+  const chatbotContainer = document.getElementById('chatbotContainer');
+
+  // Public function to set the authentication token inside the SDK
+  window.setChatbotAuthToken = function(token) {
+    authToken = token;
+    console.log("Chatbot SDK received a token. Saved locally.");
+    console.log("Simulated Chatbot Auth Token:", authToken);
+    
+    // Reload user notifications if widget is open
+    if (window.ChatbotSDK && window.ChatbotSDK.isOpen && authToken && is_first_log_in) {
+        is_first_log_in = false;
+      window.ChatbotSDK.sendSuggestions();
+    }
+  };
+  
+  // Initial chatbot state when the page loads
+  console.log("Chatbot SDK loaded. Chatbot is running but currently unauthenticated.");
+})();
