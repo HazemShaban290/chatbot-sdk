@@ -474,90 +474,101 @@ function createRating(ratingData, sendMessageCallback, styleOverrides = {}) {
 }
 
 function createDynamicForm(formData, sendMessageCallback, styleOverrides = {}) {
-    if (!formData || !formData.fields || !formData.submit_payload) return null;
+  if (!formData || !Array.isArray(formData.fields) || formData.fields.length === 0 || !formData.submit_payload) return null;
 
-    const container = document.createElement('div');
-    container.className = 'chatbot-form-container';
-    applyStyles(container, 'form', 'container', styleOverrides.container);
+  const container = document.createElement('div');
+  container.className = 'chatbot-form-container';
+  applyStyles(container, 'form', 'container', styleOverrides.container);
 
-    if (formData.title) {
-        const title = document.createElement('div');
-        title.className = 'chatbot-form-title';
-        title.textContent = formData.title;
-        applyStyles(title, 'form', 'title', styleOverrides.title);
-        container.appendChild(title);
+  if (formData.title) {
+    const title = document.createElement('div');
+    title.className = 'chatbot-form-title';
+    title.textContent = formData.title;
+    applyStyles(title, 'form', 'title', styleOverrides.title);
+    container.appendChild(title);
+  }
+
+  const form = document.createElement('form');
+  form.className = 'chatbot-form';
+  applyStyles(form, 'form', 'form', styleOverrides.form);
+
+  formData.fields.forEach(field => {
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'chatbot-form-field';
+    applyStyles(fieldDiv, 'form', 'field', styleOverrides.field);
+
+    if (field.label) {
+      const label = document.createElement('label');
+      label.textContent = field.label;
+      label.htmlFor = `chatbot-form-${field.field_name}`;
+      applyStyles(label, 'form', 'label', styleOverrides.label);
+      fieldDiv.appendChild(label);
     }
 
-    const form = document.createElement('form');
-    applyStyles(form, 'form', 'form', styleOverrides.form);
-    
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const formValues = {};
-        formData.fields.forEach(field => {
-            const input = form.querySelector(`[name="${field.field_name}"]`);
-            if (input) formValues[field.field_name] = input.value;
-        });
+    let inputElement;
+    if (field.type === 'select' && Array.isArray(field.options)) {
+      inputElement = document.createElement('select');
+      inputElement.name = field.field_name;
+      inputElement.id = `chatbot-form-${field.field_name}`;
+      field.options.forEach(optionText => {
+        const option = document.createElement('option');
+        option.value = optionText;
+        option.textContent = optionText;
+        inputElement.appendChild(option);
+      });
+    } else if (field.type === 'textarea') {
+      inputElement = document.createElement('textarea');
+      inputElement.name = field.field_name;
+      inputElement.id = `chatbot-form-${field.field_name}`;
+      inputElement.placeholder = field.placeholder || '';
+      inputElement.required = !!field.required;
+    } else {
+      inputElement = document.createElement('input');
+      inputElement.type = field.type || 'text';
+      inputElement.name = field.field_name;
+      inputElement.id = `chatbot-form-${field.field_name}`;
+      inputElement.placeholder = field.placeholder || '';
+      inputElement.required = !!field.required;
+    }
 
-        if (sendMessageCallback) {
-            const userMessageText = `Submitted form: ${Object.entries(formValues).map(([key, value]) => `${key}: ${value}`).join(', ')}`;
-            const submitPayload = `${formData.submit_payload}${JSON.stringify(formValues)}`;
-            sendMessageCallback(userMessageText, submitPayload);
-        }
-        form.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
+    applyStyles(inputElement, 'form', 'input', {
+      backgroundColor: getChatbot().config.style?.messages?.inputBackground,
+      color: getChatbot().config.style?.messages?.inputTextColor,
+      borderColor: getChatbot().config.style?.messages?.inputBorderColor,
+      ...styleOverrides.input
     });
 
+    fieldDiv.appendChild(inputElement);
+    form.appendChild(fieldDiv);
+  });
+
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'chatbot-form-submit-button';
+  submitButton.textContent = formData.submit_button_text || 'Submit';
+  applyStyles(submitButton, 'form', 'submitButton', {
+    backgroundColor: getChatbot().config.style?.messages?.buttonColor,
+    color: getChatbot().config.style?.messages?.buttonTextColor,
+    ...styleOverrides.submitButton
+  });
+  form.appendChild(submitButton);
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const formValues = {};
     formData.fields.forEach(field => {
-        const fieldDiv = document.createElement('div');
-        fieldDiv.className = 'chatbot-form-field';
-        applyStyles(fieldDiv, 'form', 'field', styleOverrides.field);
-
-        const label = document.createElement('label');
-        label.textContent = field.label;
-        label.htmlFor = `chatbot-form-${field.field_name}`;
-        applyStyles(label, 'form', 'label', styleOverrides.label);
-        fieldDiv.appendChild(label);
-
-        let inputElement;
-        if (field.type === 'select' && field.options) {
-            inputElement = document.createElement('select');
-            field.options.forEach(optionText => {
-                const option = document.createElement('option');
-                option.value = optionText;
-                option.textContent = optionText;
-                inputElement.appendChild(option);
-            });
-        } else {
-            inputElement = document.createElement('input');
-            inputElement.type = field.type;
-        }
-        
-        inputElement.id = `chatbot-form-${field.field_name}`;
-        inputElement.name = field.field_name;
-        inputElement.placeholder = field.placeholder || '';
-        inputElement.required = field.required || false;
-        applyStyles(inputElement, 'form', 'input', {
-          backgroundColor: getChatbot().config.style?.messages?.inputBackground,
-          color: getChatbot().config.style?.messages?.inputTextColor,
-          borderColor: getChatbot().config.style?.messages?.inputBorderColor,
-          ...styleOverrides.input
-        });
-        
-        fieldDiv.appendChild(inputElement);
-        form.appendChild(fieldDiv);
+      const input = form.querySelector(`[name="${field.field_name}"]`);
+      if (input) formValues[field.field_name] = input.value;
     });
 
-    const submitButton = document.createElement('button');
-    submitButton.type = 'submit';
-    submitButton.className = 'chatbot-form-submit-button';
-    submitButton.textContent = formData.submit_button_text || 'Submit';
-    applyStyles(submitButton, 'form', 'submitButton', {
-      backgroundColor: getChatbot().config.style?.messages?.buttonColor,
-      color: getChatbot().config.style?.messages?.buttonTextColor,
-      ...styleOverrides.submitButton
-    });
-    form.appendChild(submitButton);
+    if (sendMessageCallback) {
+      const userMessageText = `Submitted form: ${Object.entries(formValues).map(([key, value]) => `${key}: ${value}`).join(', ')}`;
+      const submitPayload = `${formData.submit_payload}${JSON.stringify(formValues)}`;
+      sendMessageCallback(userMessageText, submitPayload);
+    }
+    form.querySelectorAll('input, select, textarea, button').forEach(el => el.disabled = true);
+  });
 
-    container.appendChild(form);
-    return container;
+  container.appendChild(form);
+  return container;
 }

@@ -49,7 +49,7 @@ class ChatbotWidget {
     // Apply defaults if not set
     this.config.botUrl = this.config.botUrl || 'http://0.0.0.0:8000/api/v1/chatbot/chat';
     this.config.startingUrl = 'http://0.0.0.0:8000/api/v1/chatbot/start';
-    this.config.announcementsUrl = 'http://0.0.0.0:8000/api/v1/mock/announcements';
+    this.config.announcementsUrl = 'http://0.0.0.0:8000/api/v1/chatbot/news';
     this.config.themeColor = this.config.themeColor || '#020c15ff';
     //console.log('Theme color set to:', this.config.themeColor);
     this.config.position = this.config.position || 'bottom-right';
@@ -426,7 +426,7 @@ class ChatbotWidget {
             animation: shimmer 3s infinite;
             background-size: 200% auto;
             display:inline-block;
-        ">Powered by Finova ✨</span>
+        ">Powered by FinovaX ✨</span>
       </div>
     `;
 
