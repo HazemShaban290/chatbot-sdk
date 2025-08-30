@@ -125,6 +125,11 @@ export function renderCustomPayload(customPayload, sendMessageCallback = null) {
         const formEl = createDynamicForm(customPayload.forms, sendMessageCallback, customPayload.style);
         if (formEl) customContainer.appendChild(formEl);
     }
+    if (customPayload.video) {
+        const videoEl = createVideo(customPayload.video, customPayload.style);
+        if (videoEl) customContainer.appendChild(videoEl);
+        
+    }
 
     return customContainer.children.length > 0 ? customContainer : null;
 }
@@ -184,17 +189,53 @@ function createImage(imageUrl, styleOverrides = {}) {
   return img;
 }
 
-function createVideo(videoUrl, styleOverrides = {}) {
-  if (!videoUrl) return null;
-  
-  const video = document.createElement('video');
-  video.src = videoUrl;
-  video.controls = true;
-  video.className = 'chatbot-video';
-  applyStyles(video, 'video', 'video', styleOverrides);
-  
-  return video;
+function createVideo(videoObj, styleOverrides = {}) {
+  if (!videoObj.url) return null;
+
+  // Check if the URL is a YouTube link
+  const isYouTube = videoObj.url.includes("youtube.com/watch") || videoObj.url.includes("youtu.be");
+
+  if (isYouTube) {
+    // Extract video ID from URL
+    let videoId;
+    if (videoObj.url.includes("youtu.be")) {
+      videoId = videoObj.url.split("/").pop().split("?")[0];
+    } else {
+      videoId = videoObj.url.split("v=")[1].split("&")[0];
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=0`;
+    iframe.width = "250";
+    iframe.height = "140";
+    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+    iframe.allowFullscreen = true;
+
+    return iframe;
+  } else {
+    // Handle direct video file (.mp4, .webm)
+    const video = document.createElement("video");
+    video.src = videoObj.url;
+    video.controls = true;
+    video.className = "chatbot-video";
+    video.style.maxWidth = styleOverrides.maxWidth || "250px";
+    video.style.borderRadius = styleOverrides.borderRadius || "8px";
+    video.style.marginTop = styleOverrides.marginTop || "8px";
+
+    // Optional autoplay (muted)
+    if (videoObj.autoplay) {
+      video.muted = true;
+      video.autoplay = true;
+      video.addEventListener("canplay", () => {
+        video.play().catch(err => console.log("Autoplay blocked", err));
+      });
+    }
+
+    return video;
+  }
 }
+
+
 
 function createCarousel(carouselItems, sendMessageCallback, styleOverrides = {}) {
   if (!carouselItems || carouselItems.length === 0) return null;

@@ -19,13 +19,43 @@ class ChatbotWidget {
     this.termsAccepted = false;
     this.announcements = [];
     this.userNotifications = [];
+    this.notifications = [
+      "👋 !مرحباً، يمكنني مساعدتك",
+      "🛍️ هل تريد استكشاف منتجاتنا الجديدة؟",
+      "🤔 هل تحتاج مساعدة في أي شيء؟",
+      "💬 !أنا هنا إذا كان لديك أسئلة",
+      "🔥 !اطلع على أحدث عروضنا"
+    ];
+  }
+  async init() {
+    this.initConfig();
+    await this.loadConfig();
+    this.initSession();
+    
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      this.createWidgetUI();
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOM fully loaded, creating UI');
+        this.createWidgetUI();
+      });
+    }
+    
+    // Fallback timeout
+    setTimeout(() => {
+      if (!this.elements.container) {
+        console.warn('Fallback UI creation');
+        this.createWidgetUI();
+      }
+    }, 1000);
+
+    // Load announcements
+    console.log('Loading announcements...');
+    await this.loadAnnouncements();
   }
 
-  log(...args) {
-    if (this.debug) console.log('[Chatbot]', ...args);
-  }
 
-  // --- Configuration & Initialization ---
+    // --- Configuration & Initialization ---
   initConfig(apiConfig = {}) {
     const scriptTag = document.querySelector('script[src*="chatbot.bundle.js"]');
     let scriptConfig = {};
@@ -59,32 +89,6 @@ class ChatbotWidget {
     this.config.sendButtonText = this.config.sendButtonText || 'Send';
   }
 
-  async init() {
-    this.initConfig();
-    await this.loadConfig();
-    this.initSession();
-    
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      this.createWidgetUI();
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOM fully loaded, creating UI');
-        this.createWidgetUI();
-      });
-    }
-    
-    // Fallback timeout
-    setTimeout(() => {
-      if (!this.elements.container) {
-        console.warn('Fallback UI creation');
-        this.createWidgetUI();
-      }
-    }, 1000);
-
-    // Load announcements
-    console.log('Loading announcements...');
-    await this.loadAnnouncements();
-  }
 
   async loadConfig() {
     if (this.config.configApiUrl) {
@@ -99,6 +103,95 @@ class ChatbotWidget {
       }
     }
   }
+    
+  mergeConfigs(newConfig) {
+    this.config = {
+      ...this.config,
+      ...newConfig,
+      style: {
+        ...(this.config.style || {}),
+        ...(newConfig.style || {})
+      },
+      features: {
+        ...(this.config.features || {}),
+        ...(newConfig.features || {})
+      }
+    };
+    this.log('Merged config:', this.config);
+  }
+  startMessageCycle() {
+    // CLEAR ANY EXISTING INTERVAL FIRST
+    if (this.messageInterval) {
+      clearInterval(this.messageInterval);
+      this.messageInterval = null;
+    }
+    
+    if (this.isOpen) return;
+    
+    // Reset index to start from beginning
+    this.currentMessageIndex = 0;
+    
+    // Show first message immediately
+    this.showNextMessage();
+    
+    // Set interval to show next message every 5 seconds
+    this.messageInterval = setInterval(() => {
+      if (!this.isOpen) {
+        this.showNextMessage();
+      } else {
+        // If chat opened, stop the interval
+        this.stopMessageCycle();
+      }
+    }, 5000);
+  }
+
+  showNextMessage() {
+    if (!this.elements.messageBubble) return;
+    
+    // Hide current message with animation
+    this.elements.messageBubble.style.opacity = '0';
+    this.elements.messageBubble.style.transform = 'translateY(-50%) translateX(20px) scale(0.8)';
+    
+    setTimeout(() => {
+      // Update message text
+      this.elements.messageBubble.innerHTML = `
+        <span>${this.notifications[this.currentMessageIndex]}</span>
+        <div style="position: absolute; top: 50%; right: -8px; transform: translateY(-50%); width: 0; height: 0; border-left: 8px solid white; border-top: 8px solid transparent; border-bottom: 8px solid transparent;"></div>
+      `;
+      
+      // Show message with animation
+      this.elements.messageBubble.style.opacity = '1';
+      this.elements.messageBubble.style.transform = 'translateY(-50%) translateX(0) scale(1)';
+      
+      // Move to next message for the NEXT call
+      this.currentMessageIndex = (this.currentMessageIndex + 1) % this.notifications.length;
+      
+      // Debug: Log current message index
+      console.log('Showing message:', this.currentMessageIndex - 1 < 0 ? this.notifications.length - 1 : this.currentMessageIndex - 1);
+      
+    }, 400);
+  }
+
+  stopMessageCycle() {
+    if (this.messageInterval) {
+      clearInterval(this.messageInterval);
+      this.messageInterval = null;
+    }
+    
+    // Hide current message
+    if (this.elements.messageBubble) {
+      this.elements.messageBubble.style.opacity = '0';
+      this.elements.messageBubble.style.transform = 'translateY(-50%) translateX(20px) scale(0.8)';
+    }
+  }
+
+  log(...args) {
+    if (this.debug) console.log('[Chatbot]', ...args);
+  }
+
+
+
+
 
   // --- Announcements Management ---
   async loadAnnouncements() {
@@ -192,21 +285,7 @@ class ChatbotWidget {
     }
   }
 
-  mergeConfigs(newConfig) {
-    this.config = {
-      ...this.config,
-      ...newConfig,
-      style: {
-        ...(this.config.style || {}),
-        ...(newConfig.style || {})
-      },
-      features: {
-        ...(this.config.features || {}),
-        ...(newConfig.features || {})
-      }
-    };
-    this.log('Merged config:', this.config);
-  }
+
 
   applyDynamicStyles() {
     if (!this.config.style) {
@@ -285,7 +364,6 @@ class ChatbotWidget {
     // Create Chat Bubble
     const bubble = document.createElement('div');
     bubble.className = 'chatbot-bubble';
-    
     const bubbleStyle = this.config.style?.bubble || {};
     bubble.style.width = bubbleStyle.size || '60px';
     bubble.style.height = bubbleStyle.size || '60px';
@@ -303,9 +381,40 @@ class ChatbotWidget {
       `;
     }
     
+    const messageBubble = document.createElement('div');
+    messageBubble.className = 'chatbot-message';
+    messageBubble.style.cssText = `
+      position: absolute;
+      right: 90px;
+      top: 50%;
+      transform: translateY(-50%) translateX(20px) scale(0.8);
+      background: white;
+      padding: 12px 16px;
+      border-radius: 20px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      max-width: 250px;
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      font-size: 14px;
+      color: #333;
+      border: 1px solid #e0e0e0;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 999;
+    `;
+
+    messageBubble.innerHTML = '<div style="position: absolute; top: 50%; right: -8px; transform: translateY(-50%); width: 0; height: 0; border-left: 8px solid white; border-top: 8px solid transparent; border-bottom: 8px solid transparent;"></div>';
+
     bubble.addEventListener('click', () => this.toggleChatWindow());
+
+    // ADD THIS: Append both elements
+    container.appendChild(messageBubble);
     container.appendChild(bubble);
+
     this.elements.bubble = bubble;
+    this.elements.messageBubble = messageBubble; // ADD THIS LINE
+
+    setTimeout(() => this.startMessageCycle(), 3000);
 
     // Create Chat Window with tabs
     const windowEl = document.createElement('div');
@@ -587,62 +696,62 @@ class ChatbotWidget {
     }
   }
 
-renderUserNotifications() {
-  if (!this.elements.userActions || !this.elements.userNotifications) return;
+  renderUserNotifications() {
+    if (!this.elements.userActions || !this.elements.userNotifications) return;
 
-  // Clear existing notifications
-  this.elements.userNotifications.innerHTML = '';
-  
-  // Flatten the notifications into a single array of actionable items
-  const actionableItems = [];
-  this.userNotifications.forEach(notification => {
-    // Add the main notification text as a standalone card if it exists
-    if (notification.text) {
-      actionableItems.push({
-        text: notification.text,
-        url: null // No action for the main text
-      });
-    }
-    // Add each button as a separate actionable item
-    if (notification.buttons) {
-      notification.buttons.forEach(btn => {
+    // Clear existing notifications
+    this.elements.userNotifications.innerHTML = '';
+    
+    // Flatten the notifications into a single array of actionable items
+    const actionableItems = [];
+    this.userNotifications.forEach(notification => {
+      // Add the main notification text as a standalone card if it exists
+      if (notification.text) {
         actionableItems.push({
-          text: btn.title,
-          url: btn.url,
+          text: notification.text,
+          url: null // No action for the main text
         });
-      });
-    }
-  });
+      }
+      // Add each button as a separate actionable item
+      if (notification.buttons) {
+        notification.buttons.forEach(btn => {
+          actionableItems.push({
+            text: btn.title,
+            url: btn.url,
+          });
+        });
+      }
+    });
 
-  if (actionableItems.length === 0) {
-    this.elements.userActions.style.display = 'none';
-    return;
+    if (actionableItems.length === 0) {
+      this.elements.userActions.style.display = 'none';
+      return;
+    }
+
+    this.elements.userActions.style.display = 'block';
+
+    actionableItems.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'chatbot-notification-card';
+      
+      // Add the notification text
+      const textDiv = document.createElement('div');
+      textDiv.className = 'chatbot-notification-text';
+      textDiv.textContent = item.text;
+      card.appendChild(textDiv);
+      
+      // Add a button if a URL is available
+      if (item.url) {
+        const actionButton = document.createElement('button');
+        actionButton.className = 'chatbot-notification-button';
+        actionButton.textContent = 'View Details'; // A generic, actionable text
+        actionButton.onclick = () => window.open(item.url, '_blank');
+        card.appendChild(actionButton);
+      }
+      
+      this.elements.userNotifications.appendChild(card);
+    });
   }
-
-  this.elements.userActions.style.display = 'block';
-
-  actionableItems.forEach(item => {
-    const card = document.createElement('div');
-    card.className = 'chatbot-notification-card';
-    
-    // Add the notification text
-    const textDiv = document.createElement('div');
-    textDiv.className = 'chatbot-notification-text';
-    textDiv.textContent = item.text;
-    card.appendChild(textDiv);
-    
-    // Add a button if a URL is available
-    if (item.url) {
-      const actionButton = document.createElement('button');
-      actionButton.className = 'chatbot-notification-button';
-      actionButton.textContent = 'View Details'; // A generic, actionable text
-      actionButton.onclick = () => window.open(item.url, '_blank');
-      card.appendChild(actionButton);
-    }
-    
-    this.elements.userNotifications.appendChild(card);
-  });
-}
 
   updateUIElements() {
     if (this.elements.headerTitle) {
@@ -830,15 +939,22 @@ renderUserNotifications() {
     this.isOpen = !this.isOpen;
     this.elements.window.classList.toggle('open', this.isOpen);
     this.elements.bubble.classList.toggle('hidden', this.isOpen);
-    
+
     if (this.isOpen) {
       if (is_first_log_in && authToken) {
         is_first_log_in = false;
         this.sendSuggestions();
       }
+      this.stopMessageCycle();
 
       this.elements.inputField.focus();
       this.scrollToBottom();
+    }else {
+        setTimeout(() => {
+          if (!this.isOpen) { // Double-check chat is still closed
+            this.startMessageCycle();
+          }
+        }, 2000);
     }
   }
 
@@ -853,8 +969,8 @@ renderUserNotifications() {
 
 window.ChatbotSDK = new ChatbotWidget();
 window.ChatbotSDK.init();
-window.ChatbotSDK.init();
-window.ChatbotSDK.init();
+
+
 
 (function() {
   const chatbotContainer = document.getElementById('chatbotContainer');
