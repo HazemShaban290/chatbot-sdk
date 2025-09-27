@@ -2,7 +2,7 @@
 import './chatbot.css';
 import { parseMarkdown, generateUniqueId, setLocalStorageItem, getLocalStorageItem } from './utils';
 import { renderMessage, renderCustomPayload } from './renderer';
-
+import endpoints from './api/endpoints';
 let authToken = null;
 let is_first_log_in = true;
 
@@ -55,7 +55,8 @@ class ChatbotWidget {
   }
 
 
-    // --- Configuration & Initialization ---
+    //---------------------------- Configuration & Initialization ----------------------------//
+    // give the Configuration initial values from script tag and API
   initConfig(apiConfig = {}) {
     const scriptTag = document.querySelector('script[src*="chatbot.bundle.js"]');
     let scriptConfig = {};
@@ -77,9 +78,9 @@ class ChatbotWidget {
     };
 
     // Apply defaults if not set
-    this.config.botUrl = this.config.botUrl || 'http://0.0.0.0:8000/api/v1/chatbot/chat';
-    this.config.startingUrl = 'http://0.0.0.0:8000/api/v1/chatbot/start';
-    this.config.announcementsUrl = 'http://0.0.0.0:8000/api/v1/chatbot/news';
+    this.config.botUrl = endpoints.chatbot.chat;
+    this.config.startingUrl = endpoints.chatbot.start; // New endpoint for starting messages
+    this.config.announcementsUrl = endpoints.chatbot.news;
     this.config.themeColor = this.config.themeColor || '#020c15ff';
     //console.log('Theme color set to:', this.config.themeColor);
     this.config.position = this.config.position || 'bottom-right';
@@ -88,13 +89,12 @@ class ChatbotWidget {
     this.config.inputPlaceholder = this.config.inputPlaceholder || 'Type your message...';
     this.config.sendButtonText = this.config.sendButtonText || 'Send';
   }
-
-
+  // Call API to get dynamic config and merge from the backend
   async loadConfig() {
-    if (this.config.configApiUrl) {
+    if (endpoints.chatbot.config) {
       try {
         this.log('Loading initial config from API');
-        const response = await fetch(`${this.config.configApiUrl}?t=${Date.now()}`);
+        const response = await fetch(`${endpoints.chatbot.config}?t=${Date.now()}`);
         const apiConfig = await response.json();
         this.mergeConfigs(apiConfig);
         this.applyDynamicStyles();
@@ -103,7 +103,7 @@ class ChatbotWidget {
       }
     }
   }
-    
+  // merge old config with new config from API and override old values 
   mergeConfigs(newConfig) {
     this.config = {
       ...this.config,
@@ -119,6 +119,72 @@ class ChatbotWidget {
     };
     this.log('Merged config:', this.config);
   }
+  // --- Dynamic Configuration ---
+  applyDynamicStyles() {
+    if (!this.config.style) {
+      this.log('No style configuration found');
+      return;
+    }
+
+    const root = document.documentElement;
+    const { style } = this.config;
+
+    if (style.themeColor) {
+    console.log('Applying theme color:', style.themeColor);
+      root.style.setProperty('--chatbot-theme-color', style.themeColor);
+      root.style.setProperty('--chatbot-theme-color-hover', this.adjustColor(style.themeColor, -20));
+    }
+
+    if (style.header?.backgroundColor) {
+        console.log('Applying theme color:', style.backgroundColor);
+      root.style.setProperty('--chatbot-header-bg', style.header.backgroundColor);
+    }
+
+    if (style.header?.textColor) {
+      root.style.setProperty('--chatbot-header-text', style.header.textColor);
+    }
+
+    if (style.bubble?.color) {
+      root.style.setProperty('--chatbot-bubble-color', style.bubble.color);
+    }
+
+    if (style.messages?.userBubbleColor) {
+      root.style.setProperty('--chatbot-user-bubble', style.messages.userBubbleColor);
+    }
+
+    if (style.messages?.botBubbleColor) {
+      root.style.setProperty('--chatbot-bot-bubble', style.messages.botBubbleColor);
+    }
+  }
+
+  async refreshConfig() {
+    try {
+      this.log('Refreshing configuration...');
+      const response = await fetch(`${this.config.configApiUrl}?t=${Date.now()}`);
+      const newConfig = await response.json();
+      this.mergeConfigs(newConfig);
+      this.applyDynamicStyles();
+      this.updateUIElements();
+      this.log('Configuration refreshed successfully');
+      return true;
+    } catch (error) {
+      this.log('Failed to refresh config:', error);
+      return false;
+    }
+  }
+
+//------------------------------------------------------------------------//
+
+    // --- Session Management ---
+  initSession() {
+    this.sessionId = getLocalStorageItem('chatbot_session_id');
+    if (!this.sessionId) {
+      this.sessionId = generateUniqueId();
+      setLocalStorageItem('chatbot_session_id', this.sessionId);
+    }
+    this.messages = getLocalStorageItem(`chatbot_conversation_${this.sessionId}`) || [];
+  }
+
   startMessageCycle() {
     // CLEAR ANY EXISTING INTERVAL FIRST
     if (this.messageInterval) {
@@ -268,61 +334,7 @@ class ChatbotWidget {
     }
   }
 
-  // --- Dynamic Configuration ---
-  async refreshConfig() {
-    try {
-      this.log('Refreshing configuration...');
-      const response = await fetch(`${this.config.configApiUrl}?t=${Date.now()}`);
-      const newConfig = await response.json();
-      this.mergeConfigs(newConfig);
-      this.applyDynamicStyles();
-      this.updateUIElements();
-      this.log('Configuration refreshed successfully');
-      return true;
-    } catch (error) {
-      this.log('Failed to refresh config:', error);
-      return false;
-    }
-  }
 
-
-
-  applyDynamicStyles() {
-    if (!this.config.style) {
-      this.log('No style configuration found');
-      return;
-    }
-
-    const root = document.documentElement;
-    const { style } = this.config;
-
-    if (style.themeColor) {
-    console.log('Applying theme color:', style.themeColor);
-      root.style.setProperty('--chatbot-theme-color', style.themeColor);
-      root.style.setProperty('--chatbot-theme-color-hover', this.adjustColor(style.themeColor, -20));
-    }
-
-    if (style.header?.backgroundColor) {
-        console.log('Applying theme color:', style.backgroundColor);
-      root.style.setProperty('--chatbot-header-bg', style.header.backgroundColor);
-    }
-
-    if (style.header?.textColor) {
-      root.style.setProperty('--chatbot-header-text', style.header.textColor);
-    }
-
-    if (style.bubble?.color) {
-      root.style.setProperty('--chatbot-bubble-color', style.bubble.color);
-    }
-
-    if (style.messages?.userBubbleColor) {
-      root.style.setProperty('--chatbot-user-bubble', style.messages.userBubbleColor);
-    }
-
-    if (style.messages?.botBubbleColor) {
-      root.style.setProperty('--chatbot-bot-bubble', style.messages.botBubbleColor);
-    }
-  }
 
   adjustColor(color, amount) {
     return '#' + color.replace(/^#/, '').replace(/../g, colorHex => 
@@ -811,15 +823,7 @@ class ChatbotWidget {
     }
   }
 
-  // --- Session Management ---
-  initSession() {
-    this.sessionId = getLocalStorageItem('chatbot_session_id');
-    if (!this.sessionId) {
-      this.sessionId = generateUniqueId();
-      setLocalStorageItem('chatbot_session_id', this.sessionId);
-    }
-    this.messages = getLocalStorageItem(`chatbot_conversation_${this.sessionId}`) || [];
-  }
+
 
   // --- Message Handling ---
   displayMessage(message, save = true) {
