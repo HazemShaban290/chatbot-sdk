@@ -3,6 +3,22 @@ import './chatbot.css';
 import { parseMarkdown, generateUniqueId, setLocalStorageItem, getLocalStorageItem } from './utils';
 import { renderMessage, renderCustomPayload } from './renderer';
 import endpoints from './api/endpoints';
+import {
+  LocalParticipant,
+  LocalTrackPublication,
+  Participant,
+  RemoteParticipant,
+  RemoteTrack,
+  RemoteTrackPublication,
+  Room,
+  RoomEvent,
+  Track,
+  VideoPresets,
+} from 'livekit-client';
+
+
+
+
 let authToken = null;
 let is_first_log_in = true;
 
@@ -53,6 +69,11 @@ class ChatbotWidget {
     console.log('Loading announcements...');
     await this.loadAnnouncements();
   }
+
+
+//--------
+
+
 
 
     //---------------------------- Configuration & Initialization ----------------------------//
@@ -341,243 +362,506 @@ class ChatbotWidget {
       ('0' + Math.min(255, Math.max(0, parseInt(colorHex, 16) + amount)).toString(16)).slice(-6));
   }
 
-  // --- UI Management ---
-  createWidgetUI() {
-    console.log('Creating widget UI...');
-    console.log('Config:', this.config);
-  
-    const container = document.createElement('div');
-    container.id = 'chatbot-widget-container';
-    console.log('Container created:', container);
-
-    container.classList.add(`chatbot-position-${this.config.position}`);
-    container.style.display = 'none';
-    container.style.opacity = '0';
-
-    document.body.appendChild(container);
-    this.elements.container = container;
-    
-    setTimeout(() => {
-      const computedStyle = window.getComputedStyle(this.elements.container);
-      console.log('Computed styles:', {
-        display: computedStyle.display,
-        opacity: computedStyle.opacity,
-        zIndex: computedStyle.zIndex,
-        visibility: computedStyle.visibility
+  async getVoiceToken(identity, name) {
+    try {
+      const response = await fetch("http://localhost:8000/api/v1/vcb/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ identity, name })
       });
-    }, 500);
 
-    // Apply animation settings
-    const animation = this.config.style?.animation || { type: 'fade-in', duration: 300 };
-    if (animation.type) {
-      container.style.transition = `all ${animation.duration}ms ease`;
+      if (response.ok) {
+        const { room, token } = await response.json();
+        return { room, token };
+      } else {
+        console.error("Server returned an error:", response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error("Failed to load user token:", error);
+      return null;
     }
+  }
+  
+  // --- UI Management ---
+async createWidgetUI() {
+  console.log('Creating widget UI...');
+  console.log('Config:', this.config);
+ 
+  const container = document.createElement('div');
+  container.id = 'chatbot-widget-container';
+  console.log('Container created:', container);
 
-    // Create Chat Bubble
-    const bubble = document.createElement('div');
-    bubble.className = 'chatbot-bubble';
-    const bubbleStyle = this.config.style?.bubble || {};
-    bubble.style.width = bubbleStyle.size || '60px';
-    bubble.style.height = bubbleStyle.size || '60px';
-    bubble.style.backgroundColor = bubbleStyle.color || 'var(--chatbot-theme-color)';
-    
-    if (bubbleStyle.icon) {
-      bubble.innerHTML = bubbleStyle.icon.startsWith('http') ? 
-        `<img src="${bubbleStyle.icon}" alt="Chat" style="width: 70%; height: 70%;">` : 
-        bubbleStyle.icon;
-    } else {
-      bubble.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
-          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
-        </svg>
-      `;
+  container.classList.add(`chatbot-position-${this.config.position}`);
+  container.style.display = 'none';
+  container.style.opacity = '0';
+
+  document.body.appendChild(container);
+  this.elements.container = container;
+
+  // Voice call state management
+  this.voiceCallState = {
+    room: null,
+    isConnected: false,
+    isConnecting: false,
+    localParticipant: null,
+    audioContext: null,
+    oscillator: null
+  };
+
+  // Create loading sound using Web Audio API
+this.createLoadingSound = () => {
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 tone (pleasant mid pitch)
+
+  const ringDuration = 1.2; // seconds for each ring tone
+  const silenceDuration = 2.0; // seconds of silence between rings
+  const totalDuration = ringDuration + silenceDuration;
+
+  const scheduleRing = () => {
+    if (!this.voiceCallState.isConnecting) return;
+
+    const now = audioContext.currentTime;
+
+    // Smooth fade-in and fade-out for luxury effect
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1); // fade in
+    gainNode.gain.linearRampToValueAtTime(0.4, now + ringDuration - 0.2);
+    gainNode.gain.linearRampToValueAtTime(0, now + ringDuration); // fade out
+
+    // Loop again
+    setTimeout(scheduleRing, totalDuration * 1000);
+  };
+
+  scheduleRing();
+  oscillator.start();
+
+  return { audioContext, oscillator, gainNode };
+};
+
+
+  // Stop loading sound
+  this.stopLoadingSound = (soundObjects) => {
+    if (soundObjects) {
+      soundObjects.oscillator.stop();
+      soundObjects.audioContext.close();
     }
-    
-    const messageBubble = document.createElement('div');
-    messageBubble.className = 'chatbot-message';
-    messageBubble.style.cssText = `
-      position: absolute;
-      right: 90px;
-      top: 50%;
-      transform: translateY(-50%) translateX(20px) scale(0.8);
-      background: white;
-      padding: 12px 16px;
-      border-radius: 20px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-      max-width: 250px;
-      opacity: 0;
-      transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      font-size: 14px;
-      color: #333;
-      border: 1px solid #e0e0e0;
-      white-space: nowrap;
-      pointer-events: none;
-      z-index: 999;
-    `;
+  };
 
-    messageBubble.innerHTML = '<div style="position: absolute; top: 50%; right: -8px; transform: translateY(-50%); width: 0; height: 0; border-left: 8px solid white; border-top: 8px solid transparent; border-bottom: 8px solid transparent;"></div>';
+  // Initialize LiveKit Room
+  this.initializeVoiceCall = async () => {
+    if (this.voiceCallState.room) return;
 
-    bubble.addEventListener('click', () => this.toggleChatWindow());
-
-    // ADD THIS: Append both elements
-    container.appendChild(messageBubble);
-    container.appendChild(bubble);
-
-    this.elements.bubble = bubble;
-    this.elements.messageBubble = messageBubble; // ADD THIS LINE
-
-    setTimeout(() => this.startMessageCycle(), 3000);
-
-    // Create Chat Window with tabs
-    const windowEl = document.createElement('div');
-    windowEl.className = 'chatbot-window';
-    
-    const headerStyle = this.config.style?.header || {};
-    windowEl.innerHTML = `
-      <div class="chatbot-header" style="
-        ${headerStyle.backgroundColor ? `background-color: ${headerStyle.backgroundColor};` : ''}
-        ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
-      ">
-        <div class="chatbot-header-top">
-          ${headerStyle.icon ? 
-            `<img src="${headerStyle.icon}" class="chatbot-header-icon" 
-              style="width: ${headerStyle.iconSize || '30px'}; height: ${headerStyle.iconSize || '30px'};">` : ''}
-          <span class="chatbot-header-title">${this.config.botName}</span>
-          <button class="chatbot-header-close" style="
-            ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
-          ">&times;</button>
-        </div>
-
-      </div>
-      
-      <div class="chatbot-content">
-        <!-- Home Tab -->
-        <div class="chatbot-tab-content active" data-content="home">
-          <div class="chatbot-home-content">
-            <div class="chatbot-home-welcome">
-              <h2>Welcome!</h2>
-              <p>How can we help you today?</p>
-            </div>
-            
-            <div class="chatbot-actions-grid">
-              <div class="chatbot-action-card" data-action="start-chat">
-                <span class="chatbot-action-icon">💬</span>
-                <div class="chatbot-action-title">Start Chat</div>
-                <div class="chatbot-action-desc">Begin a conversation with our assistant</div>
-              </div>
-              <div class="chatbot-action-card" data-action="check-products">
-                <span class="chatbot-action-icon">🏪</span>
-                <div class="chatbot-action-title">Our Products</div>
-                <div class="chatbot-action-desc">Explore our product offerings</div>
-              </div>
-              <div class="chatbot-action-card" data-action="contact-us">
-                <span class="chatbot-action-icon">📞</span>
-                <div class="chatbot-action-title">Contact Us</div>
-                <div class="chatbot-action-desc">Get in touch with support</div>
-              </div>
-              <div class="chatbot-action-card" data-action="faq">
-                <span class="chatbot-action-icon">❓</span>
-                <div class="chatbot-action-title">FAQ</div>
-                <div class="chatbot-action-desc">Find answers to common questions</div>
-              </div>
-            </div>
-            
-            <div class="chatbot-user-actions" style="display: none;">
-              <h3>Your Account</h3>
-              <div class="chatbot-user-notifications"></div>
-            </div>
-          </div>
-        </div>
+    const handleTrackSubscribed = (track, publication, participant) => {
+        if (track.kind === Track.Kind.Audio) {
+          const element = track.attach();
+          element.autoplay = true;
+          console.log('Track subscribed:', track.kind, participant.identity);
+          container.appendChild(element);
+          
+          // Stop loading sound when agent's audio track is received
+          if (this.voiceCallState.loadingSoundObjects && participant.identity !== 'user1') {
+            this.stopLoadingSound(this.voiceCallState.loadingSoundObjects);
+            this.voiceCallState.loadingSoundObjects = null;
+            this.voiceCallState.isConnecting = false;
+            this.updateCallButton();
+          }
+        }
         
-        <!-- Chat Tab -->
-        <div class="chatbot-tab-content" data-content="chat">
-          <div class="chatbot-chat-content">
-            <div class="chatbot-messages"></div>
-            <div class="chatbot-input-area">
-              <input type="text" placeholder="${this.config.inputPlaceholder}" />
-              <button class="chatbot-send-button">${this.config.sendButtonText}</button>
+        if (track.kind === Track.Kind.Video) {
+          const element = track.attach();
+          element.autoplay = true;
+          console.log('Video track subscribed:', participant.identity);
+          container.appendChild(element);
+        }
+      };
+
+    function handleTrackUnsubscribed(track) {
+      track.detach();
+    }
+
+    function handleLocalTrackUnpublished(publication) {
+      publication.track.detach();
+    }
+
+    function handleActiveSpeakerChange(speakers) {
+      // UI indicators when participant is speaking
+    }
+
+    const handleDisconnect = () => {
+      console.log('disconnected from room');
+      this.voiceCallState.isConnected = false;
+      this.voiceCallState.isConnecting = false;
+      this.updateCallButton();
+    };
+
+    const token = await this.getVoiceToken('user1', 'Hazem');
+    const room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+    });
+
+    room
+      .on(RoomEvent.TrackSubscribed, handleTrackSubscribed)
+      .on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+      .on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakerChange)
+      .on(RoomEvent.Disconnected, handleDisconnect)
+      .on(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
+
+    this.voiceCallState.room = room;
+    return room;
+  };
+  // Start voice call
+  this.startVoiceCall = async () => {
+    if (this.voiceCallState.isConnected || this.voiceCallState.isConnecting) return;
+
+    this.voiceCallState.isConnecting = true;
+    this.updateCallButton();
+
+    // Start loading sound and store reference
+    const soundObjects = this.createLoadingSound();
+    this.voiceCallState.loadingSoundObjects = soundObjects;
+
+    try {
+      if (!this.voiceCallState.room) {
+        console.log('Initializing voice call room...');
+        await this.initializeVoiceCall();
+      }
+      let { room, token } = await this.getVoiceToken("user1", "Hazem");
+      
+      await this.voiceCallState.room.connect('ws://127.0.0.1:7880', token);
+      console.log('Connected to room', this.voiceCallState.room.name);
+      
+      await fetch('http://localhost:8000/api/v1/vcb/start_agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_name: room })
+      });
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioTrack = stream.getAudioTracks()[0];
+
+      this.voiceCallState.localParticipant = this.voiceCallState.room.localParticipant;
+      const pub = await this.voiceCallState.localParticipant.publishTrack(audioTrack, {
+        name: 'microphone',
+        source: Track.Source.Microphone,
+      });
+
+      console.log('Microphone published:', pub);
+      this.voiceCallState.isConnected = true;
+        
+
+
+      } catch (err) {
+        console.error('Error starting voice call:', err);
+        this.stopLoadingSound(soundObjects);
+        this.voiceCallState.loadingSoundObjects = null;
+        this.voiceCallState.isConnecting = false;
+        this.updateCallButton();
+        alert('Failed to start call. Please check your microphone permissions.');
+      }
+    };
+
+  // End voice call
+  this.endVoiceCall = async () => {
+    if (!this.voiceCallState.room || !this.voiceCallState.isConnected) return;
+
+    try {
+      // Disconnect from room
+      await this.voiceCallState.room.disconnect();
+      this.voiceCallState.isConnected = false;
+      this.voiceCallState.isConnecting = false;
+      this.voiceCallState.room = null;
+      this.voiceCallState.localParticipant = null;
+      this.updateCallButton();
+      console.log('Voice call ended');
+    } catch (err) {
+      console.error('Error ending voice call:', err);
+    }
+  };
+
+  // Update call button appearance
+  this.updateCallButton = () => {
+    const callButton = document.querySelector('.chatbot-action-card[data-action="voice-call"]');
+    const callIcon = callButton?.querySelector('.chatbot-action-icon');
+    const callTitle = callButton?.querySelector('.chatbot-action-title');
+    const callDesc = callButton?.querySelector('.chatbot-action-desc');
+
+    if (!callButton) return;
+
+    if (this.voiceCallState.isConnecting) {
+      callButton.style.background = 'linear-gradient(135deg, #FFA726 0%, #FB8C00 100%)';
+      callButton.style.animation = 'pulse 1.5s infinite';
+      callIcon.textContent = '⏳';
+      callTitle.textContent = 'Connecting...';
+      callDesc.textContent = 'Please wait while we connect you';
+    } else if (this.voiceCallState.isConnected) {
+      callButton.style.background = 'linear-gradient(135deg, #EF5350 0%, #E53935 100%)';
+      callButton.style.animation = 'none';
+      callIcon.textContent = '📞';
+      callTitle.textContent = 'End Call';
+      callDesc.textContent = 'Tap to disconnect the call';
+    } else {
+      callButton.style.background = '';
+      callButton.style.animation = 'none';
+      callIcon.textContent = '📞';
+      callTitle.textContent = 'Call Us';
+      callDesc.textContent = 'Start a voice conversation with us';
+    }
+  };
+
+  setTimeout(() => {
+    const computedStyle = window.getComputedStyle(this.elements.container);
+    console.log('Computed styles:', {
+      display: computedStyle.display,
+      opacity: computedStyle.opacity,
+      zIndex: computedStyle.zIndex,
+      visibility: computedStyle.visibility
+    });
+  }, 500);
+
+  // Apply animation settings
+  const animation = this.config.style?.animation || { type: 'fade-in', duration: 300 };
+  if (animation.type) {
+    container.style.transition = `all ${animation.duration}ms ease`;
+  }
+
+  // Create Chat Bubble
+  const bubble = document.createElement('div');
+  bubble.className = 'chatbot-bubble';
+  const bubbleStyle = this.config.style?.bubble || {};
+  bubble.style.width = bubbleStyle.size || '60px';
+  bubble.style.height = bubbleStyle.size || '60px';
+  bubble.style.backgroundColor = bubbleStyle.color || 'var(--chatbot-theme-color)';
+  
+  if (bubbleStyle.icon) {
+    bubble.innerHTML = bubbleStyle.icon.startsWith('http') ? 
+      `<img src="${bubbleStyle.icon}" alt="Chat" style="width: 70%; height: 70%;">` : 
+      bubbleStyle.icon;
+  } else {
+    bubble.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+      </svg>
+    `;
+  }
+  
+  const messageBubble = document.createElement('div');
+  messageBubble.className = 'chatbot-message';
+  messageBubble.style.cssText = `
+    position: absolute;
+    right: 90px;
+    top: 50%;
+    transform: translateY(-50%) translateX(20px) scale(0.8);
+    background: white;
+    padding: 12px 16px;
+    border-radius: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    max-width: 250px;
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    font-size: 14px;
+    color: #333;
+    border: 1px solid #e0e0e0;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 999;
+  `;
+
+  messageBubble.innerHTML = '<div style="position: absolute; top: 50%; right: -8px; transform: translateY(-50%); width: 0; height: 0; border-left: 8px solid white; border-top: 8px solid transparent; border-bottom: 8px solid transparent;"></div>';
+
+  bubble.addEventListener('click', () => this.toggleChatWindow());
+
+  container.appendChild(messageBubble);
+  container.appendChild(bubble);
+
+  this.elements.bubble = bubble;
+  this.elements.messageBubble = messageBubble;
+
+  setTimeout(() => this.startMessageCycle(), 3000);
+
+  // Create Chat Window with tabs
+  const windowEl = document.createElement('div');
+  windowEl.className = 'chatbot-window';
+  
+  const headerStyle = this.config.style?.header || {};
+  windowEl.innerHTML = `
+    <style>
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 4px 15px rgba(255, 167, 38, 0.3); }
+        50% { transform: scale(1.05); box-shadow: 0 6px 20px rgba(255, 167, 38, 0.5); }
+      }
+    </style>
+    <div class="chatbot-header" style="
+      ${headerStyle.backgroundColor ? `background-color: ${headerStyle.backgroundColor};` : ''}
+      ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
+    ">
+      <div class="chatbot-header-top">
+        ${headerStyle.icon ? 
+          `<img src="${headerStyle.icon}" class="chatbot-header-icon" 
+            style="width: ${headerStyle.iconSize || '30px'}; height: ${headerStyle.iconSize || '30px'};">` : ''}
+        <span class="chatbot-header-title">${this.config.botName}</span>
+        <button class="chatbot-header-close" style="
+          ${headerStyle.textColor ? `color: ${headerStyle.textColor};` : ''}
+        ">&times;</button>
+      </div>
+    </div>
+    
+    <div class="chatbot-content">
+      <!-- Home Tab -->
+      <div class="chatbot-tab-content active" data-content="home">
+        <div class="chatbot-home-content">
+          <div class="chatbot-home-welcome">
+            <h2>Welcome!</h2>
+            <p>How can we help you today?</p>
+          </div>
+          
+          <div class="chatbot-actions-grid">
+            <div class="chatbot-action-card" data-action="voice-call">
+              <span class="chatbot-action-icon">📞</span>
+              <div class="chatbot-action-title">Call Us</div>
+              <div class="chatbot-action-desc">Start a voice conversation with us</div>
+            </div>
+            <div class="chatbot-action-card" data-action="start-chat">
+              <span class="chatbot-action-icon">💬</span>
+              <div class="chatbot-action-title">Start Chat</div>
+              <div class="chatbot-action-desc">Begin a conversation with our assistant</div>
+            </div>
+            <div class="chatbot-action-card" data-action="check-products">
+              <span class="chatbot-action-icon">🏪</span>
+              <div class="chatbot-action-title">Our Products</div>
+              <div class="chatbot-action-desc">Explore our product offerings</div>
+            </div>
+            <div class="chatbot-action-card" data-action="contact-us">
+              <span class="chatbot-action-icon">✉️</span>
+              <div class="chatbot-action-title">Contact Us</div>
+              <div class="chatbot-action-desc">Get in touch with support</div>
+            </div>
+            <div class="chatbot-action-card" data-action="faq">
+              <span class="chatbot-action-icon">❓</span>
+              <div class="chatbot-action-title">FAQ</div>
+              <div class="chatbot-action-desc">Find answers to common questions</div>
             </div>
           </div>
           
-          <!-- Terms Overlay -->
-          <div class="chatbot-terms-overlay">
-            <div class="chatbot-terms-content">
-              <div class="chatbot-terms-title">Terms & Conditions</div>
-              <div class="chatbot-terms-text">
-                Before we start, and for your protection, please don't type any account or card numbers on the screen or any of your PINs. Please also note that we will be keeping a record of this conversation for service quality purposes. I am here to help you with general inquiries about the Bank, its products and services. If you need to access your bank accounts or cards,
-              </div>
-              <div class="chatbot-terms-text">
-                Dear customer, in order to ensure the confidentiality of your data, please do not share the three numbers on the back of the credit or debit card, the OTP or the password for the smart wallet service or the Internet banking with anyone, whether by phone, text message or e-mail and in case that this data is requested by any means of communication, please contact 19666 as soon as possible.
-              </div>
-              <div class="chatbot-terms-buttons">
-                <button class="chatbot-terms-accept">I Agree</button>
-                <button class="chatbot-terms-decline">Decline</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Announcements Tab -->
-        <div class="chatbot-tab-content" data-content="announcements">
-          <div class="chatbot-announcements-content">
-            <div class="chatbot-announcements-list"></div>
+          <div class="chatbot-user-actions" style="display: none;">
+            <h3>Your Account</h3>
+            <div class="chatbot-user-notifications"></div>
           </div>
         </div>
       </div>
       
-      <div class="chatbot-footer" style="
-        text-align: center;
-        padding: 10px;
-        font-size: 12px;
-        font-family: 'Segoe UI', sans-serif;
-        background: #fdfdfd;
-      ">
-        <div class="chatbot-tabs">
-          <button class="chatbot-tab active" data-tab="home">Home</button>
-          <button class="chatbot-tab" data-tab="chat">Chat</button>
-          <button class="chatbot-tab" data-tab="announcements">News</button>
+      <!-- Chat Tab -->
+      <div class="chatbot-tab-content" data-content="chat">
+        <div class="chatbot-chat-content">
+          <div class="chatbot-messages"></div>
+          <div class="chatbot-input-area">
+            <input type="text" placeholder="${this.config.inputPlaceholder}" />
+            <button class="chatbot-send-button">${this.config.sendButtonText}</button>
+          </div>
         </div>
-        <span style="
-            background: linear-gradient(90deg, #4a90e2, #9013fe, #ff4081);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: bold;
-            font-style: italic;
-            font-size: 1.1em;
-            animation: shimmer 3s infinite;
-            background-size: 200% auto;
-            display:inline-block;
-        ">Powered by FinovaX ✨</span>
+        
+        <!-- Terms Overlay -->
+        <div class="chatbot-terms-overlay">
+          <div class="chatbot-terms-content">
+            <div class="chatbot-terms-title">Terms & Conditions</div>
+            <div class="chatbot-terms-text">
+              Before we start, and for your protection, please don't type any account or card numbers on the screen or any of your PINs. Please also note that we will be keeping a record of this conversation for service quality purposes. I am here to help you with general inquiries about the Bank, its products and services. If you need to access your bank accounts or cards,
+            </div>
+            <div class="chatbot-terms-text">
+              Dear customer, in order to ensure the confidentiality of your data, please do not share the three numbers on the back of the credit or debit card, the OTP or the password for the smart wallet service or the Internet banking with anyone, whether by phone, text message or e-mail and in case that this data is requested by any means of communication, please contact 19666 as soon as possible.
+            </div>
+            <div class="chatbot-terms-buttons">
+              <button class="chatbot-terms-accept">I Agree</button>
+              <button class="chatbot-terms-decline">Decline</button>
+            </div>
+          </div>
+        </div>
       </div>
-    `;
+      
+      <!-- Announcements Tab -->
+      <div class="chatbot-tab-content" data-content="announcements">
+        <div class="chatbot-announcements-content">
+          <div class="chatbot-announcements-list"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="chatbot-footer" style="
+      text-align: center;
+      padding: 10px;
+      font-size: 12px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #fdfdfd;
+    ">
+      <div class="chatbot-tabs">
+        <button class="chatbot-tab active" data-tab="home">Home</button>
+        <button class="chatbot-tab" data-tab="chat">Chat</button>
+        <button class="chatbot-tab" data-tab="announcements">News</button>
+      </div>
+      <span style="
+          background: linear-gradient(90deg, #4a90e2, #9013fe, #ff4081);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          font-weight: bold;
+          font-style: italic;
+          font-size: 1.1em;
+          animation: shimmer 3s infinite;
+          background-size: 200% auto;
+          display:inline-block;
+      ">Powered by FinovaX ✨</span>
+    </div>
+  `;
 
-    container.appendChild(windowEl);
-    this.elements.window = windowEl;
-    this.elements.messagesContainer = windowEl.querySelector('.chatbot-messages');
-    this.elements.inputField = windowEl.querySelector('.chatbot-input-area input');
-    this.elements.sendButton = windowEl.querySelector('.chatbot-input-area button');
-    this.elements.closeButton = windowEl.querySelector('.chatbot-header-close');
-    this.elements.headerTitle = windowEl.querySelector('.chatbot-header-title');
-    this.elements.homeContent = windowEl.querySelector('[data-content="home"]');
-    this.elements.chatContent = windowEl.querySelector('[data-content="chat"]');
-    this.elements.announcementsContent = windowEl.querySelector('[data-content="announcements"]');
-    this.elements.termsOverlay = windowEl.querySelector('.chatbot-terms-overlay');
-    this.elements.userActions = windowEl.querySelector('.chatbot-user-actions');
-    this.elements.userNotifications = windowEl.querySelector('.chatbot-user-notifications');
+  container.appendChild(windowEl);
+  this.elements.window = windowEl;
+  this.elements.messagesContainer = windowEl.querySelector('.chatbot-messages');
+  this.elements.inputField = windowEl.querySelector('.chatbot-input-area input');
+  this.elements.sendButton = windowEl.querySelector('.chatbot-input-area button');
+  this.elements.closeButton = windowEl.querySelector('.chatbot-header-close');
+  this.elements.headerTitle = windowEl.querySelector('.chatbot-header-title');
+  this.elements.homeContent = windowEl.querySelector('[data-content="home"]');
+  this.elements.chatContent = windowEl.querySelector('[data-content="chat"]');
+  this.elements.announcementsContent = windowEl.querySelector('[data-content="announcements"]');
+  this.elements.termsOverlay = windowEl.querySelector('.chatbot-terms-overlay');
+  this.elements.userActions = windowEl.querySelector('.chatbot-user-actions');
+  this.elements.userNotifications = windowEl.querySelector('.chatbot-user-notifications');
 
-    // Event Listeners
-    this.setupEventListeners();
-
-    // Render messages and show
-    this.messages.forEach(msg => this.displayMessage(msg, false));
-    this.scrollToBottom();
-    this.showWidget();
-
-    // Start auto-refresh if configured
-    if (this.config.autoRefresh) {
-      this.startAutoRefresh(this.config.autoRefreshInterval || 300000);
-    }
+  // Add voice call button event listener
+  const voiceCallButton = windowEl.querySelector('.chatbot-action-card[data-action="voice-call"]');
+  if (voiceCallButton) {
+    voiceCallButton.addEventListener('click', async () => {
+      if (this.voiceCallState.isConnected) {
+        await this.endVoiceCall();
+      } else if (!this.voiceCallState.isConnecting) {
+        await this.startVoiceCall();
+      }
+    });
   }
+
+  // Event Listeners
+  this.setupEventListeners();
+
+  // Render messages and show
+  this.messages.forEach(msg => this.displayMessage(msg, false));
+  this.scrollToBottom();
+  this.showWidget();
+
+  // Start auto-refresh if configured
+  if (this.config.autoRefresh) {
+    this.startAutoRefresh(this.config.autoRefreshInterval || 300000);
+  }
+}
 
   setupEventListeners() {
     // Close button
