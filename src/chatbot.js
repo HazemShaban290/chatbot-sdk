@@ -364,7 +364,7 @@ class ChatbotWidget {
 
   async getVoiceToken(identity, name) {
     try {
-      const response = await fetch("http://localhost:8000/api/v1/vcb/token", {
+      const response = await fetch(endpoints.chatbot.voice_agent_token, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -542,7 +542,7 @@ this.createLoadingSound = () => {
       await this.voiceCallState.room.connect('ws://127.0.0.1:7880', token);
       console.log('Connected to room', this.voiceCallState.room.name);
       
-      await fetch('http://localhost:8000/api/v1/vcb/start_agent', {
+      await fetch(endpoints.chatbot.start_agent, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_name: room })

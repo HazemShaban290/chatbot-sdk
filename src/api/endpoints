@@ -10,6 +10,9 @@ const chatbot_endpoints = {
   stt: `${BASE_URL}/api/v1/vcb/sendAudioToSTT`,
 tts: `${BASE_URL}/api/v1/vcb/playTTS`,
 
+start_agent: `${BASE_URL}/api/v1/vcb/start_agent`,
+voice_agent_token: `${BASE_URL}/api/v1/vcb/token`,
+
 voice_chat: `${BASE_URL}/api/v1/vcb/chat`,
 
 
