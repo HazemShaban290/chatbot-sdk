@@ -539,7 +539,7 @@ this.createLoadingSound = () => {
       }
       let { room, token } = await this.getVoiceToken("user1", "Hazem");
       
-      await this.voiceCallState.room.connect('ws://127.0.0.1:7880', token);
+      await this.voiceCallState.room.connect('ws://89.168.84.191:7880', token); 
       console.log('Connected to room', this.voiceCallState.room.name);
       
       await fetch(endpoints.chatbot.start_agent, {
