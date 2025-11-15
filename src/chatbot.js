@@ -408,7 +408,8 @@ async createWidgetUI() {
     isConnecting: false,
     localParticipant: null,
     audioContext: null,
-    oscillator: null
+    oscillator: null,
+    selectedLanguage: 'en' 
   };
 
   // Create loading sound using Web Audio API
@@ -541,11 +542,14 @@ this.createLoadingSound = () => {
       
       await this.voiceCallState.room.connect('wss://finovax.duckdns.org', token);
       console.log('Connected to room', this.voiceCallState.room.name);
-      
+      console.log('language selected:', this.voiceCallState.selectedLanguage);
       await fetch(endpoints.chatbot.start_agent, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room_name: room })
+        body: JSON.stringify({ 
+          room_name: room,
+          language: this.voiceCallState.selectedLanguage
+        })
       });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -731,6 +735,11 @@ this.createLoadingSound = () => {
               <span class="chatbot-action-icon">📞</span>
               <div class="chatbot-action-title">Call Us</div>
               <div class="chatbot-action-desc">Start a voice conversation with us</div>
+              <div class="chatbot-language-switch">
+                <span>🌐</span>
+                <button class="lang-btn active" data-lang="en">EN</button>
+                <button class="lang-btn" data-lang="ar">AR</button>
+              </div>
             </div>
             <div class="chatbot-action-card" data-action="start-chat">
               <span class="chatbot-action-icon">💬</span>
@@ -848,7 +857,20 @@ this.createLoadingSound = () => {
       }
     });
   }
-
+  const langButtons = windowEl.querySelectorAll('.lang-btn');
+  langButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent triggering the call
+      
+      // Update active state
+      langButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      // Store selected language
+      this.voiceCallState.selectedLanguage = btn.dataset.lang;
+      console.log('Language selected:', this.voiceCallState.selectedLanguage);
+    });
+  });
   // Event Listeners
   this.setupEventListeners();
 
