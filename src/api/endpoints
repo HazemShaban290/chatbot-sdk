@@ -1,4 +1,4 @@
-const BASE_URL = "https://finovax.duckdns.org:8000"; // or your backend URL
+const BASE_URL = "http://localhost:8000"; // or your backend URL
 
 
 const chatbot_endpoints = {
@@ -11,7 +11,7 @@ const chatbot_endpoints = {
 tts: `${BASE_URL}/api/v1/vcb/playTTS`,
 
 start_agent: `${BASE_URL}/api/v1/vcb/start_agent`,
-voice_agent_token: `${BASE_URL}/api/v1/vcb/token`,
+voice_agent_token: `${BASE_URL}/api/v1/vcb/token`  ,
 
 voice_chat: `${BASE_URL}/api/v1/vcb/chat`,
 
