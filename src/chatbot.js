@@ -584,10 +584,22 @@ this.createLoadingSound = () => {
     try {
       // Disconnect from room
       await this.voiceCallState.room.disconnect();
+      
       this.voiceCallState.isConnected = false;
       this.voiceCallState.isConnecting = false;
       this.voiceCallState.room = null;
       this.voiceCallState.localParticipant = null;
+      try{
+        const response = await fetch(endpoints.chatbot.stop_agent, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ "room": this.voiceCallState.room.name })
+      });
+      } catch (error) {
+        console.error("Failed to load user token:", error);
+      }
       this.updateCallButton();
       console.log('Voice call ended');
     } catch (err) {
