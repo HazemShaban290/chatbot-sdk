@@ -540,8 +540,8 @@ this.createLoadingSound = () => {
       }
       let { room, token } = await this.getVoiceToken("user1", "Hazem");
       
-      // await this.voiceCallState.room.connect('wss://finovax.duckdns.org', token);
-      await this.voiceCallState.room.connect('ws://127.0.0.1:7880', token); 
+      await this.voiceCallState.room.connect('wss://finovax.duckdns.org', token);
+      //await this.voiceCallState.room.connect('ws://127.0.0.1:7880', token); 
       console.log('Connected to room', this.voiceCallState.room.name);
       console.log('language selected:', this.voiceCallState.selectedLanguage);
       await fetch(endpoints.chatbot.start_agent, {
